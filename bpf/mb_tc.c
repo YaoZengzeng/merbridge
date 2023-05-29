@@ -99,13 +99,16 @@ __section("classifier_ingress") int mb_tc_ingress(struct __sk_buff *skb)
         if (tcph->dest == in_port) {
             // same node, already rewrite dest port by connect.
             // bypass.
+            // 同一个节点，已经被connect重写了，跳过
             debugf("tc ingress: already rewritten");
             return TC_ACT_OK;
         }
         // ingress without mb_connect
+        // 处理没有经过 mb_connect 的 ingress 流量
         struct pod_config *pod = bpf_map_lookup_elem(&local_pod_ips, dst_ip);
         if (!pod) {
             // dest ip is not on this node or not injected sidecar.
+            // dest ip 不在本节点或者没有注入 sidecar
             debugf("tc ingress: pod not found, bypassed");
             return TC_ACT_OK;
         }
@@ -132,11 +135,15 @@ __section("classifier_ingress") int mb_tc_ingress(struct __sk_buff *skb)
         // like from 10.0.0.1:23456 => 172.31.0.123:80
         // we will rewrite the dest port from 80 to 15006
         // which will be: 10.0.0.1:23456 => 172.31.0.123:15006
+        // 就像流量从10.0.0.1:23456 => 172.31.0.123:80
+        // 我们会重写dest port，从80到15006
+        // 它会变为：10.0.0.1:23456 => 172.31.0.132:15006
         struct pair p;
         memset(&p, 0, sizeof(p));
         set_ipv6(p.sip, src_ip);
         set_ipv6(p.dip, dst_ip);
         p.sport = tcph->source;
+        // 设置为inbound port
         p.dport = in_port;
 
         __u16 dst_port = tcph->dest;
@@ -145,6 +152,7 @@ __section("classifier_ingress") int mb_tc_ingress(struct __sk_buff *skb)
         set_ipv6(origin.ip, dst_ip);
         origin.port = dst_port;
         origin.flags = TC_ORIGIN_FLAG;
+        // 更新pair_original_dst
         bpf_map_update_elem(&pair_original_dst, &p, &origin, BPF_NOEXIST);
 
         bpf_l4_csum_replace(skb, csum_off, dst_port, in_port, sizeof(dst_port));

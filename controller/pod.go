@@ -63,6 +63,7 @@ func RunLocalPodController(client kubernetes.Interface, stop chan struct{}) erro
 	}
 	w.Shutdown()
 
+	// 卸载ebpf程序
 	if err = ebpfs.UnLoadMBProgs(); err != nil {
 		return fmt.Errorf("unload failed: %v", err)
 	}
@@ -76,11 +77,13 @@ func createLocalPodController(client kubernetes.Interface) pods.Watcher {
 		panic(err)
 	}
 	return pods.Watcher{
-		Client:          client,
+		Client: client,
+		// 获取当前的node name
 		CurrentNodeName: localName,
-		OnAddFunc:       addFunc,
-		OnUpdateFunc:    updateFunc,
-		OnDeleteFunc:    deleteFunc,
+		// 事件的更新函数
+		OnAddFunc:    addFunc,
+		OnUpdateFunc: updateFunc,
+		OnDeleteFunc: deleteFunc,
 	}
 }
 
@@ -108,6 +111,7 @@ func addFunc(obj interface{}) {
 	if !ok || len(pod.Status.PodIP) == 0 {
 		return
 	}
+	// 如果不是istio注入的sidecar，直接返回
 	if config.Mode == config.ModeIstio && !pods.IsIstioInjectedSidecar(pod) {
 		return
 	}
@@ -124,6 +128,7 @@ func addFunc(obj interface{}) {
 
 	_ip, _ := linux.IP2Linux(pod.Status.PodIP)
 	log.Infof("update local_pod_ips with ip: %s", pod.Status.PodIP)
+	// pod ip到pod配置的映射，包括各种include, exclude的in和out ports
 	p := podConfig{}
 	if config.Mode == config.ModeKuma {
 		parsePodConfigFromAnnotationsKuma(pod.Annotations, &p)
@@ -132,6 +137,7 @@ func addFunc(obj interface{}) {
 	} else {
 		parsePodConfigFromAnnotations(pod.Annotations, &p)
 	}
+	// 更新map中的pod ip
 	err := ebpfs.GetLocalIPMap().Update(_ip, &p, ebpf.UpdateAny)
 	if err != nil {
 		log.Errorf("update local_pod_ips %s error: %v", pod.Status.PodIP, err)
@@ -379,6 +385,7 @@ func updateFunc(old, cur interface{}) {
 	}
 	if oldPod.Status.PodIP != curPod.Status.PodIP {
 		// only care about ip changes
+		// 只关心IP的变更
 		addFunc(cur)
 	}
 }
@@ -387,6 +394,7 @@ func deleteFunc(obj interface{}) {
 	if pod, ok := obj.(*v1.Pod); ok {
 		log.Debugf("got pod delete %s/%s", pod.Namespace, pod.Name)
 		_ip, _ := linux.IP2Linux(pod.Status.PodIP)
+		// 从map中删除pod ip相关的item
 		_ = ebpfs.GetLocalIPMap().Delete(_ip)
 	}
 }

@@ -29,6 +29,7 @@ func LoadMBProgs(meshMode string, useReconnect, useCniMode, debug bool) error {
 	if os.Getuid() != 0 {
 		return fmt.Errorf("root user in required for this process or container")
 	}
+	// 执行make load程序，加载ebpf程序
 	cmd := exec.Command("make", "load")
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "MESH_MODE="+meshMode)

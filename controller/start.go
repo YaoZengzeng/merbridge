@@ -27,6 +27,7 @@ import (
 )
 
 // Run start to run controller to watch
+// 运行start用来启动controller进行监听
 func Run(cniReady chan struct{}, stop chan struct{}) error {
 	var err error
 	var client kubernetes.Interface
@@ -44,6 +45,7 @@ func Run(cniReady chan struct{}, stop chan struct{}) error {
 	}
 
 	// run local ip controller
+	// 运行本地的ip controller
 	if err = RunLocalPodController(client, stop); err != nil {
 		return fmt.Errorf("run local ip controller error: %v", err)
 	}

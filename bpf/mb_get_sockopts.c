@@ -25,6 +25,7 @@ __section("cgroup/getsockopt") int mb_get_sockopt(struct bpf_sockopt *ctx)
 {
     // currently, eBPF can not deal with optlen more than 4096 bytes, so, we
     // should limit this.
+    // 当前eBPF不能处理超过4096字节的optlen，所以我们应该限制这个。
     if (ctx->optlen > MAX_OPS_BUFF_LENGTH) {
         debugf("optname: %d, force set optlen to %d, original optlen %d is too "
                "high",
@@ -33,9 +34,11 @@ __section("cgroup/getsockopt") int mb_get_sockopt(struct bpf_sockopt *ctx)
     }
     // envoy will call getsockopt with SO_ORIGINAL_DST, we should rewrite it to
     // return original dst info.
+    // envoy会用SO_ORIGINAL_DST调用getsockopt，我们应该重写它以返回原始的dst信息。
     if (ctx->optname != SO_ORIGINAL_DST) {
         return 1;
     }
+    // 构建pair结构
     struct pair p;
     memset(&p, 0, sizeof(p));
     p.dport = bpf_htons(ctx->sk->src_port);
@@ -46,9 +49,11 @@ __section("cgroup/getsockopt") int mb_get_sockopt(struct bpf_sockopt *ctx)
     case 2: // ipv4
         set_ipv4(p.dip, ctx->sk->src_ip4);
         set_ipv4(p.sip, ctx->sk->dst_ip4);
+        // 从pair original dst中获取origin_info
         origin = bpf_map_lookup_elem(&pair_original_dst, &p);
         if (origin) {
             // rewrite original_dst
+            // 重写original dst
             ctx->optlen = (__s32)sizeof(struct sockaddr_in);
             if ((void *)((struct sockaddr_in *)ctx->optval + 1) >
                 ctx->optval_end) {
@@ -58,9 +63,11 @@ __section("cgroup/getsockopt") int mb_get_sockopt(struct bpf_sockopt *ctx)
             ctx->retval = 0;
             struct sockaddr_in sa = {
                 .sin_family = ctx->sk->family,
+                // 获取original addr和port
                 .sin_addr.s_addr = get_ipv4(origin->ip),
                 .sin_port = origin->port,
             };
+            // 重新设置addr和port
             *(struct sockaddr_in *)ctx->optval = sa;
         }
         break;

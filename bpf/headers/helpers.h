@@ -227,6 +227,7 @@ struct origin_info {
     __u32 pid;
     __u16 port;
     // last bit means that ip of process is detected.
+    // 最后一位表示进程的ip是否被检测到
     __u16 flags;
 };
 
@@ -245,12 +246,18 @@ struct cgroup_info {
     // user-defined. E.g, for those who wish to determine if port 15001 is
     // listened to, we can customize a flag, `IS_LISTEN_15001 = 1 << 2`, which
     // we can subsequently detect by `flags & IS_LISTEN_15001`.
+    // 我们不能在这里指定监听哪些端口，所以我们打开了一个标志，用户自定义。
+    // 例如，对于那些希望确定端口15001是否被监听的人，我们可以自定义一个标志，`IS_LISTEN_15001 = 1 << 2`，
+    // 随后我们可以通过`flags & IS_LISTEN_15001`来检测。
     __u16 flags;
     // detected_flags is used to determine if this operation has ever been
     // performed. if `flags & IS_LISTEN_15001` is false but `detected_flags &
     // IS_LISTEN_15001` is true, that means real true, we do not need recheck.
     // but if `detected_flags & IS_LISTEN_15001` is false, that probably means
     // we haven't tested it and need to retest it.
+    // detected_flags用于确定是否曾经执行过此操作。如果`flags & IS_LISTEN_15001`为false，
+    // 但`detected_flags & IS_LISTEN_15001`为true，那么意味着真正的true，我们不需要重新检查。
+    // 但是如果`detected_flags & IS_LISTEN_15001`为false，那可能意味着我们还没有测试过它，需要重新测试它。
     __u16 detected_flags;
 };
 

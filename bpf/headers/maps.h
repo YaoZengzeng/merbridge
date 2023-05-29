@@ -28,6 +28,8 @@ struct bpf_elf_map __section("maps") cookie_original_dst = {
 // local_pods stores Pods' ips in current node.
 // which can be set by controller.
 // only contains injected pods.
+// local_pods存储本节点的Pods的ip地址，可以由控制器设置。
+// 只包含注入的Pods。
 struct bpf_elf_map __section("maps") local_pod_ips = {
     .type = BPF_MAP_TYPE_HASH,
     .size_key = sizeof(__u32) * 4,
@@ -37,6 +39,7 @@ struct bpf_elf_map __section("maps") local_pod_ips = {
 };
 
 // process_ip stores envoy's ip address.
+// process_ip存储envoy的ip地址
 struct bpf_elf_map __section("maps") process_ip = {
     .type = BPF_MAP_TYPE_LRU_HASH,
     .size_key = sizeof(__u32),
@@ -46,6 +49,7 @@ struct bpf_elf_map __section("maps") process_ip = {
 
 // cgroup_ips caches the ip address of each cgroup, which is used to speed up
 // the connect process.
+// cgroup_ips缓存每个cgroup的ip地址，用于加速连接过程。
 struct bpf_elf_map __section("maps") cgroup_info_map = {
     .type = BPF_MAP_TYPE_LRU_HASH,
     .size_key = sizeof(__u64),

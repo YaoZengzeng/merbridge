@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	ModeIstio       = "istio"
-	ModeLinkerd     = "linkerd"
-	ModeKuma        = "kuma"
-	ModeOsm         = "osm"
+	ModeIstio   = "istio"
+	ModeLinkerd = "linkerd"
+	ModeKuma    = "kuma"
+	ModeOsm     = "osm"
+	// ebpf中的map
 	LocalPodIps     = "/sys/fs/bpf/local_pod_ips"
 	PairOriginalDst = "/sys/fs/bpf/pair_original_dst"
 )

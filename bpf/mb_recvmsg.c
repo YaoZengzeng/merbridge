@@ -25,6 +25,7 @@ __section("cgroup/recvmsg4") int mb_recvmsg4(struct bpf_sock_addr *ctx)
 {
 #if MESH != ISTIO && MESH != KUMA
     // only works on istio and kuma
+    // 只在istio和kuma下工作
     return 1;
 #endif
     if (bpf_htons(ctx->user_port) != DNS_CAPTURE_PORT) {
@@ -36,11 +37,13 @@ __section("cgroup/recvmsg4") int mb_recvmsg4(struct bpf_sock_addr *ctx)
         return 1;
     }
     __u64 cookie = bpf_get_socket_cookie_addr(ctx);
+    // 从cookie_original_dst中获取origin_info
     struct origin_info *origin = (struct origin_info *)bpf_map_lookup_elem(
         &cookie_original_dst, &cookie);
     if (origin) {
         ctx->user_port = origin->port;
         ctx->user_ip4 = get_ipv4(origin->ip);
+        // 成功处理DNS重定向查询
         debugf("successfully deal DNS redirect query");
     } else {
         printk("failed to get origin");

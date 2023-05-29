@@ -39,9 +39,11 @@ static inline int udp_connect4(struct bpf_sock_addr *ctx)
         return 1;
     }
 
+    // 获取当前进程的UID?
     __u64 uid = bpf_get_current_uid_gid() & 0xffffffff;
     if (uid != SIDECAR_USER_ID) {
         // needs rewrite
+        // 需要重写
         struct origin_info origin;
         memset(&origin, 0, sizeof(origin));
         set_ipv4(origin.ip, ctx->user_ip4);
@@ -52,6 +54,7 @@ static inline int udp_connect4(struct bpf_sock_addr *ctx)
                                 BPF_ANY)) {
             printk("update origin cookie failed: %d", cookie);
         }
+        // 更新为local dns的端口
         ctx->user_port = bpf_htons(DNS_CAPTURE_PORT);
         ctx->user_ip4 = localhost;
     }
@@ -67,6 +70,7 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
     if (!cg_info.is_in_mesh) {
         // bypass normal traffic. we only deal pod's
         // traffic managed by istio or kuma.
+        // 跳过正常流量。我们只处理由istio或kuma管理的pod的流量。
         return 1;
     }
     __u32 curr_pod_ip;
@@ -75,32 +79,41 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
     curr_pod_ip = get_ipv4(_curr_pod_ip);
 
     if (curr_pod_ip == 0) {
+        // 获取当前的pod ip失败
         debugf("get current pod ip error");
     }
+    // 获取uid
     __u64 uid = bpf_get_current_uid_gid() & 0xffffffff;
     __u32 dst_ip = ctx->user_ip4;
     if (uid != SIDECAR_USER_ID) {
         if ((dst_ip & 0xff) == 0x7f) {
             // app call local, bypass.
+            // app调用本地，跳过
             return 1;
         }
         __u64 cookie = bpf_get_socket_cookie_addr(ctx);
         // app call others
+        // app调用其他
         debugf("call from user container: cookie: %d, ip: %pI4, port: %d",
                cookie, &dst_ip, bpf_htons(ctx->user_port));
 
         // we need redirect it to envoy.
+        // 我们需要转发到envoy
         struct origin_info origin;
         memset(&origin, 0, sizeof(origin));
+        // 保存原始的目标地址
         set_ipv4(origin.ip, dst_ip);
         origin.port = ctx->user_port;
+        // 如果是应用发出的流量，设置flag
         origin.flags = 1;
+        // 更新cookie original dst
         if (bpf_map_update_elem(&cookie_original_dst, &cookie, &origin,
                                 BPF_ANY)) {
             printk("write cookie_original_dst failed");
             return 0;
         }
         if (curr_pod_ip) {
+            // 获取pod的配置
             struct pod_config *pod =
                 bpf_map_lookup_elem(&local_pod_ips, _curr_pod_ip);
             if (pod) {
@@ -140,6 +153,7 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
                     return 1;
                 }
             } else {
+                // 不能从local_pod_ips中找到pod信息
                 debugf("current pod ip found(%pI4), but can not find pod_info "
                        "from local_pod_ips",
                        &curr_pod_ip);
@@ -176,6 +190,7 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
             if (bpf_bind(ctx, &addr, sizeof(struct sockaddr_in))) {
                 debugf("bind %pI4 error", &curr_pod_ip);
             }
+            // 修改user ip
             ctx->user_ip4 = localhost;
         } else {
             // if we can not get the pod ip, we rewrite the dest address.
@@ -183,37 +198,48 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
             // using 127.0.0.1 directly is to avoid conflicts between the
             // quaternions of different Pods when the quaternions are
             // subsequently processed.
+            // 如果我们不能获取pod ip，我们重写目标地址
+            // 我们尝试使用127.128.0.0/20段的IP而不是直接使用127.0.0.1的原因是，
+            // 为了避免在随后处理四元数时不同Pod的四元数之间的冲突
             ctx->user_ip4 = bpf_htonl(0x7f800000 | (outip++));
             if (outip >> 20) {
                 outip = 1;
             }
         }
+        // 转换为OUT REDIRECT PORT
         ctx->user_port = bpf_htons(OUT_REDIRECT_PORT);
     } else {
         // from envoy to others
+        // 从envoy到其他
         __u32 _dst_ip[4];
         set_ipv4(_dst_ip, dst_ip);
         struct pod_config *pod = bpf_map_lookup_elem(&local_pod_ips, _dst_ip);
         if (!pod) {
             // dst ip is not in this node, bypass
+            // dst ip不在此节点中，绕过
             debugf("dest ip: %pI4 not in this node, bypass", &dst_ip);
             return 1;
         }
 
         // dst ip is in this node, but not the current pod,
         // it is envoy to envoy connecting.
+        // dst ip在这个node，但是不是当前的pod，这是envoy到envoy连接。
         struct origin_info origin;
+        // 设置origin为原先的目标地址和端口?
         memset(&origin, 0, sizeof(origin));
         set_ipv4(origin.ip, dst_ip);
+        // 对于envoy发出的流量，不设置flag
         origin.port = ctx->user_port;
 
         if (curr_pod_ip) {
             if (curr_pod_ip != dst_ip) {
                 // call other pod, need redirect port.
+                // 调用其他pod，需要重定向端口。
                 int exclude = 0;
                 IS_EXCLUDE_PORT(pod->exclude_in_ports, ctx->user_port,
                                 &exclude);
                 if (exclude) {
+                    // 对于包含在exclude_in_ports中的端口，不进行重定向
                     debugf("ignored dest port by exclude_in_ports, ip: %pI4, "
                            "port: %d",
                            &dst_ip, bpf_htons(ctx->user_port));
@@ -223,16 +249,19 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
                 IS_INCLUDE_PORT(pod->include_in_ports, ctx->user_port,
                                 &include);
                 if (!include) {
+                    // 对于包含在include_in_ports中的端口，不进行重定向
                     debugf("ignored dest port by include_in_ports, ip: %pI4, "
                            "port: %d",
                            &dst_ip, bpf_htons(ctx->user_port));
                     return 1;
                 }
+                // 设置端口为INBOUND端口
                 ctx->user_port = bpf_htons(IN_REDIRECT_PORT);
             }
             origin.flags |= 1;
         } else {
             // can not get current pod ip, we use the legacy mode.
+            // 不能获取当前的pod ip，使用legacy mode
 
             // u64 bpf_get_current_pid_tgid(void)
             // Return A 64-bit integer containing the current tgid and
@@ -240,18 +269,24 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
             //                 32
             //                | current_task->pid.
             // pid may be thread id, we should use tgid
+            // pid可能为thread id，我们使用tgid
             __u32 pid = bpf_get_current_pid_tgid() >> 32; // tgid
             void *curr_ip = bpf_map_lookup_elem(&process_ip, &pid);
             if (curr_ip) {
                 // envoy to other envoy
+                // 从envoy到另一个envoy
                 if (*(__u32 *)curr_ip != dst_ip) {
+                    // envoy到另一个envoy，重写dst port从ctx->user_port到IN_REDIRECT_PORT
                     debugf("enovy to other, rewrite dst port from %d to %d",
                            ctx->user_port, IN_REDIRECT_PORT);
+                    // 重写IN REDIRECT PORT
                     ctx->user_port = bpf_htons(IN_REDIRECT_PORT);
                 }
                 origin.flags |= 1;
                 // envoy to app, no rewrite
+                // envoy到app，不再重写
             } else {
+                // 最开始读不到process对应的ip
                 origin.flags = 0;
                 origin.pid = pid;
 #ifdef USE_RECONNECT
@@ -262,15 +297,24 @@ static inline int tcp_connect4(struct bpf_sock_addr *ctx)
                 // if src is equals dst, it means envoy call self pod,
                 // we should reject this traffic in sockops,
                 // envoy will create a new connection to self pod.
+                // envoy到envoy的流量，试着重定向到15006
+                // 但是如果是envoy调用自己的pod，可能会导致错误，
+                // 这种情况下，我们可以在sockops中读取src和dst ip，如果src等于dst，
+                // 这意味着envoy调用自己的pod，我们应该在sockops中拒绝这个流量，envoy将创建一个新的连接到自己的pod。
                 ctx->user_port = bpf_htons(IN_REDIRECT_PORT);
 #endif
             }
         }
+
+        // 获取socket的cookie addr
         __u64 cookie = bpf_get_socket_cookie_addr(ctx);
+        // 调用自sidecar
         debugf("call from sidecar container: cookie: %d, ip: %pI4, port: %d",
                cookie, &dst_ip, bpf_htons(ctx->user_port));
+        // key为cookie，value为origin
         if (bpf_map_update_elem(&cookie_original_dst, &cookie, &origin,
                                 BPF_NOEXIST)) {
+            // 更新cookie origin失败
             printk("update cookie origin failed");
             return 0;
         }

@@ -21,11 +21,14 @@ limitations under the License.
 // this prog hook linkerd bind OUTPUT_LISTENER
 // which will makes the listen address change from 127.0.0.1:4140 to
 // 0.0.0.0:4140
+// 这个prog钩子linkerd绑定OUTPUT_LISTENER，这将使监听地址从
+// 127.0.0.1:4140更改为0.0.0.0:4140
 #if ENABLE_IPV4
 __section("cgroup/bind4") int mb_bind(struct bpf_sock_addr *ctx)
 {
 #if MESH != LINKERD
     // only works on linkerd
+    // 只在linkerd下工作
     return 1;
 #endif
 

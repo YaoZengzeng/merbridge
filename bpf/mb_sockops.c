@@ -22,44 +22,57 @@ limitations under the License.
 #if ENABLE_IPV4
 static inline int sockops_ipv4(struct bpf_sock_ops *skops)
 {
+    // 其实还是获取源socket的cookie
     __u64 cookie = bpf_get_socket_cookie_ops(skops);
 
     struct pair p;
     memset(&p, 0, sizeof(p));
+    // pair中设置sip、sport、dip、dport
     set_ipv4(p.sip, skops->local_ip4);
     p.sport = bpf_htons(skops->local_port);
     set_ipv4(p.dip, skops->remote_ip4);
     p.dport = skops->remote_port >> 16;
 
+    // 从cookie_original_dst中获取origin_info
     struct origin_info *dst =
         bpf_map_lookup_elem(&cookie_original_dst, &cookie);
     if (dst) {
+        // 获取origin info
         struct origin_info dd = *dst;
         if (!(dd.flags & 1)) {
+            // 说明是envoy发出的流量
             __u32 pid = dd.pid;
             // process ip not detected
+            // 进程IP未检测到
             if (skops->local_ip4 == envoy_ip ||
                 skops->local_ip4 == skops->remote_ip4) {
                 // envoy to local
+                // envoy到本地的处理流程
                 __u32 ip = skops->remote_ip4;
+                // 转换成应用的目标地址
                 debugf("detected process %d's ip is %pI4", pid, &ip);
                 bpf_map_update_elem(&process_ip, &pid, &ip, BPF_ANY);
 #ifdef USE_RECONNECT
                 if (skops->remote_port >> 16 == bpf_htons(IN_REDIRECT_PORT)) {
+                    // 不正确的连接
                     printk("incorrect connection: cookie=%d", cookie);
                     return 1;
                 }
 #endif
             } else {
                 // envoy to envoy
+                // envoy到envoy的处理流程
                 __u32 ip = skops->local_ip4;
+                // 检测进程到IP的映射
                 bpf_map_update_elem(&process_ip, &pid, &ip, BPF_ANY);
                 debugf("detected process %d's ip is %pI4", pid, &ip);
             }
         }
         // get_sockopts can read pid and cookie,
         // we should write a new map named pair_original_dst
+        // get_sockops可以读取pid和cookie，我们应该写一个新的map名为pair_original_dst
         bpf_map_update_elem(&pair_original_dst, &p, &dd, BPF_ANY);
+        // 更新sock_pair_map
         bpf_sock_hash_update(skops, &sock_pair_map, &p, BPF_NOEXIST);
     } else if (skops->local_port == OUT_REDIRECT_PORT ||
                skops->local_port == IN_REDIRECT_PORT ||

@@ -27,6 +27,7 @@ limitations under the License.
 #define DNS_CAPTURE_PORT_FLAG (1 << 1)
 
 // get_current_cgroup_info return 1 if succeed, 0 for error
+// get_current_cgroup_info返回1表示成功，0表示错误
 static inline int get_current_cgroup_info(void *ctx,
                                           struct cgroup_info *cg_info)
 {
@@ -73,8 +74,10 @@ static inline int get_current_cgroup_info(void *ctx,
         if (!is_port_listen_current_ns(ctx, ip_zero, OUT_REDIRECT_PORT)) {
             // not in mesh
             _default.is_in_mesh = 0;
+            // 没有获取监听cgroup的端口，不在mesh中
             debugf("can not get port listen for cgroup(%ld)", cgroup_id);
         } else {
+            // 否则在mesh中
             _default.is_in_mesh = 1;
         }
 #endif

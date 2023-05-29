@@ -42,8 +42,10 @@ __section("sk_msg") int mb_msg_redir(struct sk_msg_md *msg)
 #endif
     }
 
+    // 直接在socket pair之间转发message
     long ret = bpf_msg_redirect_hash(msg, &sock_pair_map, &p, BPF_F_INGRESS);
     if (ret)
+        // 转发字节
         debugf("redirect %d bytes with eBPF successfully", msg->size);
     return 1;
 }

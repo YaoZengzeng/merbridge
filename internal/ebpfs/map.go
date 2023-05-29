@@ -31,6 +31,7 @@ var (
 
 func InitLoadPinnedMap() error {
 	var err error
+	// 初始化local pod ip map和pair original ip map
 	localPodIpsMap, err = ebpf.LoadPinnedMap(config.LocalPodIps, &ebpf.LoadPinOptions{})
 	if err != nil {
 		return fmt.Errorf("load map error: %v", err)
@@ -44,6 +45,7 @@ func InitLoadPinnedMap() error {
 
 func GetLocalIPMap() *ebpf.Map {
 	if localPodIpsMap == nil {
+		// 初始化加载固定的map
 		_ = InitLoadPinnedMap()
 	}
 	return localPodIpsMap
